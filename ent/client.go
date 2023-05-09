@@ -9,9 +9,10 @@ import (
 	"log"
 
 	"entgo.io/bug/ent/migrate"
+	"entgo.io/ent"
 
+	"entgo.io/bug/ent/unrenameduser"
 	"entgo.io/bug/ent/user"
-
 	"entgo.io/ent/dialect"
 	"entgo.io/ent/dialect/sql"
 )
@@ -21,8 +22,12 @@ type Client struct {
 	config
 	// Schema is the client for creating, migrating and dropping schema.
 	Schema *migrate.Schema
+	// UnrenamedUser is the client for interacting with the UnrenamedUser builders.
+	UnrenamedUser *UnrenamedUserClient
 	// User is the client for interacting with the User builders.
 	User *UserClient
+	// additional fields for node api
+	tables tables
 }
 
 // NewClient creates a new client configured with the given options.
@@ -36,7 +41,57 @@ func NewClient(opts ...Option) *Client {
 
 func (c *Client) init() {
 	c.Schema = migrate.NewSchema(c.driver)
+	c.UnrenamedUser = NewUnrenamedUserClient(c.config)
 	c.User = NewUserClient(c.config)
+}
+
+type (
+	// config is the configuration for the client and its builder.
+	config struct {
+		// driver used for executing database requests.
+		driver dialect.Driver
+		// debug enable a debug logging.
+		debug bool
+		// log used for logging on debug mode.
+		log func(...any)
+		// hooks to execute on mutations.
+		hooks *hooks
+		// interceptors to execute on queries.
+		inters *inters
+	}
+	// Option function to configure the client.
+	Option func(*config)
+)
+
+// options applies the options on the config object.
+func (c *config) options(opts ...Option) {
+	for _, opt := range opts {
+		opt(c)
+	}
+	if c.debug {
+		c.driver = dialect.Debug(c.driver, c.log)
+	}
+}
+
+// Debug enables debug logging on the ent.Driver.
+func Debug() Option {
+	return func(c *config) {
+		c.debug = true
+	}
+}
+
+// Log sets the logging function for debug mode.
+func Log(fn func(...any)) Option {
+	return func(c *config) {
+		c.log = fn
+	}
+}
+
+// Driver configures the client driver.
+func Driver(driver dialect.Driver) Option {
+	return func(c *config) {
+		c.driver = driver
+	}
 }
 
 // Open opens a database/sql.DB specified by the driver name and
@@ -68,9 +123,10 @@ func (c *Client) Tx(ctx context.Context) (*Tx, error) {
 	cfg := c.config
 	cfg.driver = tx
 	return &Tx{
-		ctx:    ctx,
-		config: cfg,
-		User:   NewUserClient(cfg),
+		ctx:           ctx,
+		config:        cfg,
+		UnrenamedUser: NewUnrenamedUserClient(cfg),
+		User:          NewUserClient(cfg),
 	}, nil
 }
 
@@ -88,16 +144,17 @@ func (c *Client) BeginTx(ctx context.Context, opts *sql.TxOptions) (*Tx, error) 
 	cfg := c.config
 	cfg.driver = &txDriver{tx: tx, drv: c.driver}
 	return &Tx{
-		ctx:    ctx,
-		config: cfg,
-		User:   NewUserClient(cfg),
+		ctx:           ctx,
+		config:        cfg,
+		UnrenamedUser: NewUnrenamedUserClient(cfg),
+		User:          NewUserClient(cfg),
 	}, nil
 }
 
 // Debug returns a new debug-client. It's used to get verbose logging on specific operations.
 //
 //	client.Debug().
-//		User.
+//		UnrenamedUser.
 //		Query().
 //		Count(ctx)
 func (c *Client) Debug() *Client {
@@ -119,22 +176,144 @@ func (c *Client) Close() error {
 // Use adds the mutation hooks to all the entity clients.
 // In order to add hooks to a specific client, call: `client.Node.Use(...)`.
 func (c *Client) Use(hooks ...Hook) {
+	c.UnrenamedUser.Use(hooks...)
 	c.User.Use(hooks...)
 }
 
 // Intercept adds the query interceptors to all the entity clients.
 // In order to add interceptors to a specific client, call: `client.Node.Intercept(...)`.
 func (c *Client) Intercept(interceptors ...Interceptor) {
+	c.UnrenamedUser.Intercept(interceptors...)
 	c.User.Intercept(interceptors...)
 }
 
 // Mutate implements the ent.Mutator interface.
 func (c *Client) Mutate(ctx context.Context, m Mutation) (Value, error) {
 	switch m := m.(type) {
+	case *UnrenamedUserMutation:
+		return c.UnrenamedUser.mutate(ctx, m)
 	case *UserMutation:
 		return c.User.mutate(ctx, m)
 	default:
 		return nil, fmt.Errorf("ent: unknown mutation type %T", m)
+	}
+}
+
+// UnrenamedUserClient is a client for the UnrenamedUser schema.
+type UnrenamedUserClient struct {
+	config
+}
+
+// NewUnrenamedUserClient returns a client for the UnrenamedUser from the given config.
+func NewUnrenamedUserClient(c config) *UnrenamedUserClient {
+	return &UnrenamedUserClient{config: c}
+}
+
+// Use adds a list of mutation hooks to the hooks stack.
+// A call to `Use(f, g, h)` equals to `unrenameduser.Hooks(f(g(h())))`.
+func (c *UnrenamedUserClient) Use(hooks ...Hook) {
+	c.hooks.UnrenamedUser = append(c.hooks.UnrenamedUser, hooks...)
+}
+
+// Intercept adds a list of query interceptors to the interceptors stack.
+// A call to `Intercept(f, g, h)` equals to `unrenameduser.Intercept(f(g(h())))`.
+func (c *UnrenamedUserClient) Intercept(interceptors ...Interceptor) {
+	c.inters.UnrenamedUser = append(c.inters.UnrenamedUser, interceptors...)
+}
+
+// Create returns a builder for creating a UnrenamedUser entity.
+func (c *UnrenamedUserClient) Create() *UnrenamedUserCreate {
+	mutation := newUnrenamedUserMutation(c.config, OpCreate)
+	return &UnrenamedUserCreate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// CreateBulk returns a builder for creating a bulk of UnrenamedUser entities.
+func (c *UnrenamedUserClient) CreateBulk(builders ...*UnrenamedUserCreate) *UnrenamedUserCreateBulk {
+	return &UnrenamedUserCreateBulk{config: c.config, builders: builders}
+}
+
+// Update returns an update builder for UnrenamedUser.
+func (c *UnrenamedUserClient) Update() *UnrenamedUserUpdate {
+	mutation := newUnrenamedUserMutation(c.config, OpUpdate)
+	return &UnrenamedUserUpdate{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOne returns an update builder for the given entity.
+func (c *UnrenamedUserClient) UpdateOne(uu *UnrenamedUser) *UnrenamedUserUpdateOne {
+	mutation := newUnrenamedUserMutation(c.config, OpUpdateOne, withUnrenamedUser(uu))
+	return &UnrenamedUserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// UpdateOneID returns an update builder for the given id.
+func (c *UnrenamedUserClient) UpdateOneID(id int) *UnrenamedUserUpdateOne {
+	mutation := newUnrenamedUserMutation(c.config, OpUpdateOne, withUnrenamedUserID(id))
+	return &UnrenamedUserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// Delete returns a delete builder for UnrenamedUser.
+func (c *UnrenamedUserClient) Delete() *UnrenamedUserDelete {
+	mutation := newUnrenamedUserMutation(c.config, OpDelete)
+	return &UnrenamedUserDelete{config: c.config, hooks: c.Hooks(), mutation: mutation}
+}
+
+// DeleteOne returns a builder for deleting the given entity.
+func (c *UnrenamedUserClient) DeleteOne(uu *UnrenamedUser) *UnrenamedUserDeleteOne {
+	return c.DeleteOneID(uu.ID)
+}
+
+// DeleteOneID returns a builder for deleting the given entity by its id.
+func (c *UnrenamedUserClient) DeleteOneID(id int) *UnrenamedUserDeleteOne {
+	builder := c.Delete().Where(unrenameduser.ID(id))
+	builder.mutation.id = &id
+	builder.mutation.op = OpDeleteOne
+	return &UnrenamedUserDeleteOne{builder}
+}
+
+// Query returns a query builder for UnrenamedUser.
+func (c *UnrenamedUserClient) Query() *UnrenamedUserQuery {
+	return &UnrenamedUserQuery{
+		config: c.config,
+		ctx:    &QueryContext{Type: TypeUnrenamedUser},
+		inters: c.Interceptors(),
+	}
+}
+
+// Get returns a UnrenamedUser entity by its id.
+func (c *UnrenamedUserClient) Get(ctx context.Context, id int) (*UnrenamedUser, error) {
+	return c.Query().Where(unrenameduser.ID(id)).Only(ctx)
+}
+
+// GetX is like Get, but panics if an error occurs.
+func (c *UnrenamedUserClient) GetX(ctx context.Context, id int) *UnrenamedUser {
+	obj, err := c.Get(ctx, id)
+	if err != nil {
+		panic(err)
+	}
+	return obj
+}
+
+// Hooks returns the client hooks.
+func (c *UnrenamedUserClient) Hooks() []Hook {
+	return c.hooks.UnrenamedUser
+}
+
+// Interceptors returns the client interceptors.
+func (c *UnrenamedUserClient) Interceptors() []Interceptor {
+	return c.inters.UnrenamedUser
+}
+
+func (c *UnrenamedUserClient) mutate(ctx context.Context, m *UnrenamedUserMutation) (Value, error) {
+	switch m.Op() {
+	case OpCreate:
+		return (&UnrenamedUserCreate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdate:
+		return (&UnrenamedUserUpdate{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpUpdateOne:
+		return (&UnrenamedUserUpdateOne{config: c.config, hooks: c.Hooks(), mutation: m}).Save(ctx)
+	case OpDelete, OpDeleteOne:
+		return (&UnrenamedUserDelete{config: c.config, hooks: c.Hooks(), mutation: m}).Exec(ctx)
+	default:
+		return nil, fmt.Errorf("ent: unknown UnrenamedUser mutation op: %q", m.Op())
 	}
 }
 
@@ -255,3 +434,13 @@ func (c *UserClient) mutate(ctx context.Context, m *UserMutation) (Value, error)
 		return nil, fmt.Errorf("ent: unknown User mutation op: %q", m.Op())
 	}
 }
+
+// hooks and interceptors per client, for fast access.
+type (
+	hooks struct {
+		UnrenamedUser, User []ent.Hook
+	}
+	inters struct {
+		UnrenamedUser, User []ent.Interceptor
+	}
+)

@@ -8,27 +8,26 @@ import (
 )
 
 // User holds the schema definition for the User entity.
-type User struct {
+type UnrenamedUser struct {
 	ent.Schema
 }
 
-// Fields of the User.
-func (User) Fields() []ent.Field {
+// Fields of the UnrenamedUser.
+func (UnrenamedUser) Fields() []ent.Field {
 	return []ent.Field{
 		field.Int("age"),
 		field.String("name"),
 	}
 }
 
-// Edges of the User.
-func (User) Edges() []ent.Edge {
+// Edges of the UnrenamedUser.
+func (UnrenamedUser) Edges() []ent.Edge {
 	return nil
 }
 
-func (User) Annotations() []schema.Annotation {
+func (UnrenamedUser) Annotations() []schema.Annotation {
 	return []schema.Annotation{
 		entgql.RelayConnection(),
 		entgql.QueryField(),
-		entgql.Type("RenamedUser"),
 	}
 }

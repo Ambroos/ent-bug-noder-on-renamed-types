@@ -8,6 +8,18 @@ import (
 )
 
 var (
+	// UnrenamedUsersColumns holds the columns for the "unrenamed_users" table.
+	UnrenamedUsersColumns = []*schema.Column{
+		{Name: "id", Type: field.TypeInt, Increment: true},
+		{Name: "age", Type: field.TypeInt},
+		{Name: "name", Type: field.TypeString},
+	}
+	// UnrenamedUsersTable holds the schema information for the "unrenamed_users" table.
+	UnrenamedUsersTable = &schema.Table{
+		Name:       "unrenamed_users",
+		Columns:    UnrenamedUsersColumns,
+		PrimaryKey: []*schema.Column{UnrenamedUsersColumns[0]},
+	}
 	// UsersColumns holds the columns for the "users" table.
 	UsersColumns = []*schema.Column{
 		{Name: "id", Type: field.TypeInt, Increment: true},
@@ -22,6 +34,7 @@ var (
 	}
 	// Tables holds all the tables in the schema.
 	Tables = []*schema.Table{
+		UnrenamedUsersTable,
 		UsersTable,
 	}
 )
